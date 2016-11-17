@@ -3,57 +3,36 @@ typedef struct {
 } AccuratePixel;
 __kernel
 void performNewIdeaIterationGPU(
-		__global AccuratePixel *pixelOut,
-		__global AccuratePixel *pixelIn,
-		int size,
+		__global AccuratePixel *pixels_out,
+		__global AccuratePixel *pixels_in,
+		int k_size,
 		int len_x,
 		int len_y) {
 	
-	int pos_y = get_global_id(1);
-	int pos_x = get_global_id(0);
-	// For each pixel we compute the magic number
-	float sumR = 0;
-	float sumG = 0;
-	float sumB = 0;
-	int countIncluded = 0;
-	for(int y = -size; y <= size; y++) {
-		for(int x = -size; x <= size; x++) {
-			int currentX = pos_x + x;
-			int currentY = pos_y + y;
+	int y = get_global_id(1);
+	int x = get_global_id(0);
+	float sum_r = 0;
+	float sum_g = 0;
+	float sum_b = 0;
+	int normalized_divisor = 0;
+	for (int offset_y = -k_size; offset_y <= k_size; ++offset_y) {
+		int cur_y = y + offset_y;
+		if (cur_y < 0 || cur_y >= len_y) continue;
+		for (int offset_x = -k_size; offset_x <= k_size; ++offset_x) {
+			int cur_x = x + offset_x;
+			if (cur_x < 0 || cur_x >= len_x) continue;
+		  int pixel_idx = cur_y*len_x + cur_x;
 
-			// Check if we are outside the bounds
-			if(currentX < 0)
-				continue;
-			if(currentX >= len_x)
-				continue;
-			if(currentY < 0)
-				continue;
-			if(currentY >= len_y)
-				continue;
-
-			// Now we can begin
-			int numberOfValuesInEachRow = len_x;
-			int offsetOfThePixel = (numberOfValuesInEachRow * currentY + currentX);
-			sumR += pixelIn[offsetOfThePixel].red;
-			sumG += pixelIn[offsetOfThePixel].green;
-			sumB += pixelIn[offsetOfThePixel].blue;
-
-			// Keep track of how many values we have included
-			countIncluded++;
+		  sum_r += pixels_in[pixel_idx].red;
+		  sum_g += pixels_in[pixel_idx].green;
+		  sum_b += pixels_in[pixel_idx].blue;
+		  normalized_divisor++;
 		}
-
 	}
-
-	// Now we compute the final value for all colours
-	float recip = 1.0f/countIncluded;
-	float valueR = sumR * recip;
-	float valueG = sumG * recip;
-	float valueB = sumB * recip;
-
-	// Update the output image
-	int offsetOfThePixel = (len_x * pos_y + pos_x);
-	pixelOut[offsetOfThePixel].red = valueR;
-	pixelOut[offsetOfThePixel].green = valueG;
-	pixelOut[offsetOfThePixel].blue = valueB;
-
+	int cur_idx = y*len_x + x;
+	float recip = 1.0f/normalized_divisor;
+	pixels_out[cur_idx].red = sum_r*recip;//regulate(sum_r*recip);
+	pixels_out[cur_idx].green = sum_g*recip;//regulate(sum_g*recip);
+	pixels_out[cur_idx].blue = sum_b*recip;//regulate(sum_b*recip);
 }
+

@@ -2,13 +2,15 @@
 #define KERNEL_FUNC "performNewIdeaIterationGPU"
 #define ARRAY_SIZE (1<<14)
 
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <CL/cl.h>
 #include "ppm.h"
+
+#include <CL/cl.h>
+#include <math.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+#include <time.h>
 
 inline void error(int assert, const char *msg) {
 	if (!assert) {
@@ -16,6 +18,7 @@ inline void error(int assert, const char *msg) {
 		exit(EXIT_FAILURE);
 	}
 }
+
 cl_int query_device(void) {
 	cl_platform_id *platforms = NULL;
 	char vendor_name[128] = { 0 };
@@ -209,8 +212,8 @@ void error_check(cl_int err, const char *msg) {
 void setBufferAndEnqueueKernel(cl_kernel *kernel,
 		cl_mem* pixel_output_memobj, cl_mem* pixel_input_memobj,
 		cl_command_queue* queue, size_t* global_size, size_t* local_size) {
-	cl_int err = clSetKernelArg(*kernel, 0, sizeof(cl_mem), &*pixel_output_memobj);
-	err |= clSetKernelArg(*kernel, 1, sizeof(cl_mem), &*pixel_input_memobj);
+	cl_int err = clSetKernelArg(*kernel, 0, sizeof(cl_mem), pixel_output_memobj);
+	err |= clSetKernelArg(*kernel, 1, sizeof(cl_mem), pixel_input_memobj);
 	error_check(err, "Failed create kernel arguments");
 	err = clEnqueueNDRangeKernel(*queue, *kernel, 2, NULL, global_size,
 			local_size, 0, NULL, NULL);
@@ -226,20 +229,21 @@ void new_idea(int size, cl_kernel* kernel, size_t global_size[],
 	err |= clSetKernelArg(*kernel, 4, sizeof(int), &(image->y));
 	error_check(err, "Failed create kernel arguments");
 	/* Enqueue kernel */
-	setBufferAndEnqueueKernel(&*kernel, &*pixel_output_memobj,
-			&*pixel_input_memobj, &*queue, global_size, local_size);
-	setBufferAndEnqueueKernel(&*kernel, &*pixel_input_memobj,
-			&*pixel_output_memobj, &*queue, global_size, local_size);
-	setBufferAndEnqueueKernel(&*kernel, &*pixel_output_memobj,
-			&*pixel_input_memobj, &*queue, global_size, local_size);
-	setBufferAndEnqueueKernel(&*kernel, &*pixel_input_memobj,
-			&*pixel_output_memobj, &*queue, global_size, local_size);
-	setBufferAndEnqueueKernel(&*kernel, &*pixel_output_memobj,
-			&*pixel_input_memobj, &*queue, global_size, local_size);
+	setBufferAndEnqueueKernel(kernel, pixel_output_memobj,
+			pixel_input_memobj, queue, global_size, local_size);
+	setBufferAndEnqueueKernel(kernel, pixel_input_memobj,
+			pixel_output_memobj, queue, global_size, local_size);
+	setBufferAndEnqueueKernel(kernel, pixel_output_memobj,
+			pixel_input_memobj, queue, global_size, local_size);
+	setBufferAndEnqueueKernel(kernel, pixel_input_memobj,
+			pixel_output_memobj, queue, global_size, local_size);
+	setBufferAndEnqueueKernel(kernel, pixel_output_memobj,
+			pixel_input_memobj, queue, global_size, local_size);
 }
 
-int main() {
-
+int main(int argc, char *argv[]) {
+	assert(argc == 2);
+	const char * kernel_name = argv[1];
 	/* OpenCL structures */
 	cl_device_id device;
 	cl_context context;
@@ -265,7 +269,7 @@ int main() {
 	};
 
 	/* Build program */
-	program = build_program(context, device, PROGRAM_FILE);
+	program = build_program(context, device, kernel_name);
 
 	/**
 	 * Data preparation
@@ -297,12 +301,13 @@ int main() {
 	error_check(err, "Couldn't create a kernel");
 
 	/* Create kernel arguments */
-	new_idea(20, &kernel, global_size, local_size, image, &pixel_output_memobj,
+	new_idea(3, &kernel, global_size, local_size, image, &pixel_output_memobj,
 			&pixel_input_memobj, &queue);
 	/* Read the kernel's output */
 	err = clEnqueueReadBuffer(queue, pixel_output_memobj, CL_TRUE, 0, pixels_size*sizeof(AccuratePixel), imageBuffer->data,
 			0, NULL, NULL);
 	if (err < 0) {
+		printf("err no: %d\n", err);
 		perror("Couldn't read the buffer");
 		exit(1);
 	}
